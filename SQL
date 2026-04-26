@@ -1,0 +1,118 @@
+-- =========================================
+-- MAGNA PATIENT MONITORING DATABASE
+-- =========================================
+
+CREATE DATABASE IF NOT EXISTS magna_db;
+USE magna_db;
+
+-- =========================================
+-- PATIENT TABLE
+-- =========================================
+CREATE TABLE patients (
+    patient_id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100),
+    age INT,
+    gender VARCHAR(10),
+    contact VARCHAR(15),
+    blood_group VARCHAR(5),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =========================================
+-- DEVICE TABLE (ESP32 Units)
+-- =========================================
+CREATE TABLE devices (
+    device_id INT AUTO_INCREMENT PRIMARY KEY,
+    device_name VARCHAR(100),
+    location VARCHAR(100),
+    status VARCHAR(20) DEFAULT 'ACTIVE',
+    assigned_patient_id INT,
+    FOREIGN KEY (assigned_patient_id) REFERENCES patients(patient_id)
+);
+
+-- =========================================
+-- VITAL SIGNS TABLE
+-- =========================================
+CREATE TABLE vitals (
+    vitals_id INT AUTO_INCREMENT PRIMARY KEY,
+    patient_id INT,
+    heart_rate INT,
+    temperature FLOAT,
+    spo2 INT,
+    recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
+);
+
+-- =========================================
+-- SALINE MONITORING TABLE
+-- =========================================
+CREATE TABLE saline_data (
+    saline_id INT AUTO_INCREMENT PRIMARY KEY,
+    patient_id INT,
+    weight FLOAT,
+    percentage_remaining FLOAT,
+    flow_rate FLOAT,
+    recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
+);
+
+-- =========================================
+-- BUBBLE DETECTION TABLE
+-- =========================================
+CREATE TABLE bubble_detection (
+    bubble_id INT AUTO_INCREMENT PRIMARY KEY,
+    patient_id INT,
+    bubble_detected BOOLEAN,
+    recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
+);
+
+-- =========================================
+-- ALERTS TABLE (CRITICAL EVENTS)
+-- =========================================
+CREATE TABLE alerts (
+    alert_id INT AUTO_INCREMENT PRIMARY KEY,
+    patient_id INT,
+    alert_type VARCHAR(100),
+    alert_message TEXT,
+    severity VARCHAR(20), -- LOW, MEDIUM, HIGH
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
+);
+
+-- =========================================
+-- SENSOR LOGS (FOR AI/ML TRAINING DATA)
+-- =========================================
+CREATE TABLE sensor_logs (
+    log_id INT AUTO_INCREMENT PRIMARY KEY,
+    patient_id INT,
+    heart_rate INT,
+    temperature FLOAT,
+    spo2 INT,
+    saline_percentage FLOAT,
+    flow_rate FLOAT,
+    anomaly_flag BOOLEAN DEFAULT FALSE,
+    recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
+);
+
+-- =========================================
+-- SAMPLE DATA INSERT (OPTIONAL)
+-- =========================================
+INSERT INTO patients (name, age, gender, contact, blood_group)
+VALUES ('John Doe', 45, 'Male', '9876543210', 'O+');
+
+INSERT INTO devices (device_name, location, assigned_patient_id)
+VALUES ('ESP32 Unit 1', 'ICU Bed 3', 1);
+
+INSERT INTO vitals (patient_id, heart_rate, temperature, spo2)
+VALUES (1, 85, 36.5, 98);
+
+INSERT INTO saline_data (patient_id, weight, percentage_remaining, flow_rate)
+VALUES (1, 500, 75, 2.5);
+
+INSERT INTO bubble_detection (patient_id, bubble_detected)
+VALUES (1, FALSE);
+
+INSERT INTO alerts (patient_id, alert_type, alert_message, severity)
+VALUES (1, 'LOW_SALINE', 'Saline level below threshold', 'HIGH');
