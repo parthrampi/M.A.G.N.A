@@ -1,51 +1,63 @@
-# M.A.G.N.A. – Smart Medical Monitoring Database System 🏥
+# M.A.G.N.A. Database – Patient Monitoring System
 
-## Overview
-M.A.G.N.A. (Medical Automated Guardian & Notification Assistant) is an AI-enabled healthcare monitoring system designed to track patient vitals, saline levels, and critical conditions in real time.
+## About the Project
 
-This repository contains the **relational database design (SQL)** used to store, manage, and analyze patient data for intelligent monitoring and future machine learning applications.
+This database is part of my M.A.G.N.A. project (Medical Automated Guardian & Notification Assistant), where I built a system to monitor patient vitals and saline levels using sensors and an ESP32.
 
----
-
-## 🚀 Key Features
-
-- Real-time patient monitoring data storage
-- Saline level tracking with flow rate analysis
-- Air bubble detection logging (critical for IV safety)
-- Alert management system for abnormal conditions
-- Device-to-patient mapping (ESP32 units)
-- Centralized sensor logs for AI/ML model training
+The goal of this database is simple:
+👉 Store all patient-related data in a structured way so it can be monitored, analyzed, and later used for intelligent decision-making.
 
 ---
 
-## 🧠 System Architecture
+## What This Database Handles
 
-ESP32 Sensors → Cloud / Backend → SQL Database → Alerts / Dashboard → AI Models
+This database is designed to store:
 
----
-
-## 🗄️ Database Design
-
-### Tables Included:
-
-| Table Name        | Description |
-|------------------|------------|
-| `patients`       | Stores patient details |
-| `devices`        | Tracks ESP32 devices assigned to patients |
-| `vitals`         | Heart rate, temperature, SpO2 |
-| `saline_data`    | Saline weight, percentage, flow rate |
-| `bubble_detection` | Air bubble detection logs |
-| `alerts`         | Critical alerts and notifications |
-| `sensor_logs`    | Combined dataset for ML training |
+- Patient basic information  
+- Device (ESP32) assigned to each patient  
+- Real-time vitals (heart rate, temperature, SpO2)  
+- Saline level and flow rate  
+- Bubble detection (important for IV safety)  
+- Alerts generated when something goes wrong  
+- Sensor logs for future AI/ML use  
 
 ---
 
-## ⚙️ Setup Instructions
+## Tables Overview
 
-### 1. Install MySQL
-Ensure MySQL or MariaDB is installed.
+### patients
+Stores basic patient details like name, age, contact, etc.
 
-### 2. Run SQL Script
+### devices
+Keeps track of ESP32 devices and which patient they are assigned to.
+
+### vitals
+Stores patient vitals like heart rate, temperature, and oxygen level.
+
+### saline_data
+Tracks saline bottle weight, remaining percentage, and flow rate.
+
+### bubble_detection
+Logs whether an air bubble is detected in the saline tube.
+
+### alerts
+Stores alerts like low saline, abnormal vitals, or emergency conditions.
+
+### sensor_logs
+This is important — it stores combined data which can later be used for:
+- anomaly detection
+- prediction models
+- AI-based healthcare insights
+
+---
+
+## How to Use
+
+### Step 1: Install MySQL
+
+Make sure MySQL or MariaDB is installed on your system.
+
+### Step 2: Run the SQL file
 
 ```bash
 mysql -u root -p < magna_database.sql
