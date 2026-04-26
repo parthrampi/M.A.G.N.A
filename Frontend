@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>MAGNA – Multi-Bed Hospital Monitoring Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Tailwind CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Firebase v8 (simple) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <style>
+      /* small tweak for modal centering fallback */
+      #add-patient-modal .relative {
+        max-height: 85vh;
+        overflow: auto;
+      }
+    </style>
+  </head>
+  <body class="min-h-screen bg-slate-50 text-slate-900">
+    <!-- Alarm audio -->
+    <audio
+      id="alarm-audio"
+      preload="auto"
+      src="data:audio/wav;base64,UklGRmACAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YYACAAAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAA"
+    ></audio>
+
+    <!-- Header -->
+    <header class="sticky top-0 z-30 bg-white/90 backdrop-blur border-b">
+      <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
+        <div class="flex items-center gap-2">
+          <div
+            class="w-8 h-8 rounded-2xl bg-blue-600 flex items-center justify-center text-white font-bold"
+          >
+            M
+          </div>
+          <div>
+            <div class="font-extrabold leading-none tracking-tight">MAGNA</div>
+            <div class="text-[11px] text-gray-500 -mt-0.5">
+              Automated Multi-Bed Monitoring
+            </div>
+          </div>
+        </div>
+
+        <div class="ml-auto flex items-center gap-2">
+          <input
+            id="magna-search"
+            placeholder="Search name, bed, age, blood group (/ to focus)"
+            class="w-64 md:w-80 px-3 py-2 rounded-xl border bg-white text-sm"
+          />
+          <label
+            class="flex items-center gap-2 text-sm px-2 py-1 rounded-xl border bg-white"
+          >
+            <input type="checkbox" id="critical-only-checkbox" />
+            Critical only
+          </label>
+
+          <button
+            id="add-patient-header-btn"
+            title="Add new patient"
+            class="px-3 py-2 rounded-xl border bg-blue-600 text-white text-sm"
+          >
+            + Add Patient
+          </button>
+
+          <button
+            id="pause-button"
+            class="px-3 py-2 rounded-xl border bg-white text-sm"
+          >
+            Pause
+          </button>
+          <select
+            id="interval-select"
+            class="px-2 py-2 rounded-xl border bg-white text-sm"
+          >
+            <option value="1000">1s</option>
+            <option value="1500" selected>1.5s</option>
+            <option value="2000">2s</option>
+            <option value="3000">3s</option>
+          </select>
+        </div>
+      </div>
+    </header>
+
+    <!-- KPI strip -->
+    <section
+      class="max-w-7xl mx-auto px-4 py-4 grid grid-cols-2 md:grid-cols-4 gap-3"
+    >
+      <div class="p-4 rounded-2xl border bg-white">
+        <div class="text-xs text-gray-500">Total Patients</div>
+        <div id="kpi-total-beds" class="text-2xl font-bold">0</div>
+      </div>
+      <div class="p-4 rounded-2xl border bg-white">
+        <div class="text-xs text-gray-500">Active Alarms</div>
+        <div id="kpi-active-alarms" class="text-2xl font-bold">0</div>
+      </div>
+      <div class="p-4 rounded-2xl border bg-white">
+        <div class="text-xs text-gray-500">&lt; 20%</div>
+        <div id="kpi-under-20" class="text-2xl font-bold">0</div>
+      </div>
+      <div class="p-4 rounded-2xl border bg-white">
+        <div class="text-xs text-gray-500">Updated</div>
+        <div id="kpi-updated" class="text-2xl font-bold">--:--:--</div>
+      </div>
+    </section>
+
+    <!-- Main grid -->
+    <main class="max-w-7xl mx-auto px-4 pb-10">
+      <h2 class="text-lg font-semibold mb-3">Ward Overview</h2>
+      <div
+        id="bed-grid"
+        class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3"
+      >
+        <!-- Bed cards injected by JS -->
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t bg-white/80">
+      <div
+        class="max-w-7xl mx-auto px-4 py-3 text-xs text-gray-500 flex items-center justify-between"
+      >
+        <div>
+          © <span id="footer-year"></span> MAGNA • Hospital Monitoring Dashboard
+        </div>
+        <div class="flex items-center gap-3">
+          <span>Shortcuts: / search · p pause</span>
+        </div>
+      </div>
+    </footer>
+
+    <!-- Drawer (Patient Profile) -->
+    <div id="drawer-overlay" class="fixed inset-0 z-40 hidden">
+      <div class="absolute inset-0 bg-black/40" id="drawer-backdrop"></div>
+      <aside
+        id="drawer-panel"
+        class="absolute right-0 top-0 h-full w-full sm:w-[480px] bg-white shadow-2xl p-6 overflow-y-auto"
+      >
+        <div class="flex items-center justify-between mb-4">
+          <h2 id="drawer-title" class="text-xl font-bold">Patient Profile</h2>
+          <button
+            id="drawer-close-btn"
+            class="px-3 py-1 rounded-xl border text-sm"
+          >
+            Close
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 gap-4 text-sm" id="drawer-content">
+          <!-- Filled by JS -->
+        </div>
+      </aside>
+    </div>
+
+    <!-- Add Patient Modal -->
+    <div
+      id="add-patient-modal"
+      class="fixed inset-0 z-50 hidden items-center justify-center"
+    >
+      <div class="absolute inset-0 bg-black/40"></div>
+      <div
+        class="relative bg-white rounded-2xl shadow-xl p-6 w-full max-w-2xl z-10"
+      >
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold">Add New Patient</h3>
+          <button id="close-add-modal" class="px-2 py-1 rounded border">
+            Close
+          </button>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <input
+            id="new-first"
+            class="px-3 py-2 border rounded"
+            placeholder="First name"
+          />
+          <input
+            id="new-last"
+            class="px-3 py-2 border rounded"
+            placeholder="Last name"
+          />
+          <input
+            id="new-age"
+            class="px-3 py-2 border rounded"
+            placeholder="Age"
+            type="number"
+            min="0"
+          />
+          <input
+            id="new-room"
+            class="px-3 py-2 border rounded"
+            placeholder="Room / Bed # (optional)"
+          />
+          <input
+            id="new-blood"
+            class="px-3 py-2 border rounded"
+            placeholder="Blood group (e.g. A+)"
+          />
+          <input
+            id="new-contact"
+            class="px-3 py-2 border rounded"
+            placeholder="Contact number"
+          />
+          <div class="col-span-2">
+            <textarea
+              id="new-address"
+              class="w-full px-3 py-2 border rounded"
+              rows="3"
+              placeholder="Address"
+            ></textarea>
+          </div>
+          <div class="col-span-2 flex gap-2">
+            <button
+              id="submit-add"
+              class="px-4 py-2 rounded-2xl bg-blue-600 text-white"
+            >
+              Add Patient
+            </button>
+            <button
+              id="submit-add-and-open"
+              class="px-4 py-2 rounded-2xl border"
+            >
+              Add & Open
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast -->
+    <div
+      id="toast"
+      class="fixed bottom-4 right-4 z-50 bg-white/90 backdrop-blur border shadow-lg rounded-2xl px-4 py-3 text-sm hidden"
+    >
+      <div id="toast-message" class="font-semibold"></div>
+    </div>
+
+    <!-- JS Logic -->
+    <script>
+      // ---------- Firebase config ----------
+      const firebaseConfig = {
+        apiKey: "AIzaSyBRN4xYHFTiGYywTuXSJC6UfT0DTxYugXk",
+        authDomain: "magna-63a2d.firebaseapp.com",
+        databaseURL:
+          "https://magna-63a2d-default-rtdb.asia-southeast1.firebasedatabase.app",
+        projectId: "magna-63a2d",
+        storageBucket: "magna-63a2d.firebasestorage.app",
+        messagingSenderId: "299617370981",
+        appId: "1:299617370981:web:dd8bf10b33a674d83f578c",
+        measurementId: "G-P9H9E9PM1Z",
+      };
+      firebase.initializeApp(firebaseConfig);
+      const db = firebase.database();
+
+      // ---------- State ----------
+      let patients = []; // array of { key, data }
+      let patientsMap = {}; // key => data
+      let filterText = "";
+      let onlyAlerts = false;
+      let paused = false;
+      let intervalMs = 1500;
+      let intervalId = null;
+      let selectedPatientKey = null;
+      let toastTimeoutId = null;
+
+      document.getElementById("footer-year").textContent =
+        new Date().getFullYear();
+
+      // ---------- Helpers ----------
+      function pad2(n) {
+        return String(n).padStart(2, "0");
+      }
+      function salineColor(pct) {
+        if (pct <= 5) return "bg-red-600";
+        if (pct <= 20) return "bg-orange-500";
+        if (pct <= 50) return "bg-yellow-500";
+        return "bg-green-500";
+      }
+      function ringColor(pct) {
+        if (pct <= 5) return "text-red-600";
+        if (pct <= 20) return "text-orange-500";
+        if (pct <= 50) return "text-yellow-500";
+        return "text-green-500";
+      }
+      function circleGaugeSvg(pct, size = 72, stroke = 8) {
+        const safePct = isFinite(Number(pct)) ? Number(pct) : 0;
+        const r = (size - stroke) / 2;
+        const c = 2 * Math.PI * r;
+        const dash = (safePct / 100) * c;
+        const gap = c - dash;
+        const cx = size / 2;
+        const cy = size / 2;
+        return `
+          <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-label="Saline ${safePct}%">
+            <circle cx="${cx}" cy="${cy}" r="${r}" stroke-width="${stroke}" class="stroke-gray-200 fill-none"></circle>
+            <circle cx="${cx}" cy="${cy}" r="${r}" stroke-width="${stroke}" stroke-linecap="round" class="fill-none ${ringColor(
+          safePct
+        )}" style="stroke-dasharray:${dash} ${gap}; transform: rotate(-90deg); transform-origin: 50% 50%;"></circle>
+          </svg>
+        `;
+      }
+      function showToast(msg) {
+        const toast = document.getElementById("toast");
+        const msgEl = document.getElementById("toast-message");
+        msgEl.textContent = msg;
+        toast.classList.remove("hidden");
+        if (toastTimeoutId) clearTimeout(toastTimeoutId);
+        toastTimeoutId = setTimeout(() => toast.classList.add("hidden"), 3000);
+      }
+
+      // ---------- Read & listen to DB (root) ----------
+      // We will read root and pick keys that match /^patient(\d*)$/
+      function startPatientListener() {
+        db.ref("/").on(
+          "value",
+          (snap) => {
+            const root = snap.val() || {};
+            const keys = Object.keys(root).filter((k) =>
+              /^patient(\d*)$/.test(k)
+            );
+            // Build patients array
+            patients = keys.map((k) => {
+              const raw = root[k] || {};
+              return { key: k, data: raw };
+            });
+            // Ensure consistent sort: treat "patient" as 1, patient2 as 2, ...
+            patients.sort((a, b) => {
+              const idx = (s) => {
+                if (s === "patient") return 1;
+                const m = s.match(/^patient(\d+)$/);
+                return m ? Number(m[1]) : 999999;
+              };
+              return idx(a.key) - idx(b.key);
+            });
+            patientsMap = {};
+            patients.forEach((p) => {
+              // normalize to expected shape: sensor data in root child
+              const obj = { ...(p.data || {}) };
+              // If hardware stores different field names (like 'salineLevel' or 'salineLevel'), keep both checks later
+              patientsMap[p.key] = obj;
+            });
+            renderApp();
+          },
+          (err) => {
+            console.error("DB listen error:", err);
+            showToast("Firebase error (see console).");
+          }
+        );
+      }
+
+      // ---------- Create next patient key logic ----------
+      // returns nextKey like 'patient', 'patient2', 'patient3', ...
+      async function computeNextPatientKey() {
+        const snap = await db.ref("/").once("value");
+        const root = snap.val() || {};
+        const keys = Object.keys(root).filter((k) => /^patient(\d*)$/.test(k));
+        if (keys.length === 0) return "patient";
+        // compute numeric indices
+        let max = 0;
+        keys.forEach((k) => {
+          if (k === "patient") {
+            max = Math.max(max, 1);
+          } else {
+            const m = k.match(/^patient(\d+)$/);
+            if (m) max = Math.max(max, Number(m[1]));
+          }
+        });
+        const next = max + 1;
+        return next === 1 ? "patient" : "patient" + next;
+      }
+
+      // ---------- Add Patient (writes at root with named key) ----------
+      async function addPatientToFirebase(openAfter = false) {
+        const first = document.getElementById("new-first").value.trim();
+        const last = document.getElementById("new-last").value.trim();
+        const ageRaw = document.getElementById("new-age").value.trim();
+        const age = ageRaw === "" ? 0 : Number(ageRaw); // default 0
+        const room = document.getElementById("new-room").value.trim();
+        const blood = document.getElementById("new-blood").value.trim();
+        const contact = document.getElementById("new-contact").value.trim();
+        const address = document.getElementById("new-address").value.trim();
+
+        if (!first) {
+          alert("Enter first name");
+          return;
+        }
+
+        try {
+          const nextKey = await computeNextPatientKey();
+          const payload = {
+            name: `${first} ${last}`.trim() || "--",
+            age: age,
+            contact: contact || "--",
+            address: address || "--",
+            bloodGroup: blood || "--",
+            heartRate: 0, // ensure visible in Firebase
+            salineLevel: 0, // ensure visible in Firebase
+            temperature: 0, // ensure visible in Firebase
+            bed: room ? (isFinite(Number(room)) ? Number(room) : room) : "--",
+            createdAt: Date.now(),
+          };
+
+          await db.ref("/" + nextKey).set(payload);
+          showToast("Patient added as " + nextKey);
+
+          // Clear form
+          document.getElementById("new-first").value = "";
+          document.getElementById("new-last").value = "";
+          document.getElementById("new-age").value = "";
+          document.getElementById("new-room").value = "";
+          document.getElementById("new-blood").value = "";
+          document.getElementById("new-contact").value = "";
+          document.getElementById("new-address").value = "";
+          closeAddModal();
+
+          if (openAfter) {
+            setTimeout(() => openDrawer(nextKey), 700);
+          }
+        } catch (e) {
+          console.error("Failed to add patient:", e);
+          showToast("Failed to add patient (see console)");
+        }
+      }
+
+      // ---------- Discharge (delete) ----------
+      function dischargePatient(key) {
+        if (!confirm("Discharge this patient? This will delete the record."))
+          return;
+        db.ref("/" + key)
+          .remove()
+          .then(() => {
+            showToast("Patient discharged");
+            // close drawer if open for this key
+            if (selectedPatientKey === key) closeDrawer();
+          })
+          .catch((e) => {
+            console.error(e);
+            showToast("Failed to discharge");
+          });
+      }
+
+      // ---------- UI: drawer, cards, render ----------
+      function openAddModal() {
+        document.getElementById("add-patient-modal").classList.remove("hidden");
+      }
+      function closeAddModal() {
+        document.getElementById("add-patient-modal").classList.add("hidden");
+      }
+
+      function openDrawer(key) {
+        selectedPatientKey = key;
+        renderDrawer();
+      }
+      function closeDrawer() {
+        selectedPatientKey = null;
+        renderDrawer();
+      }
+
+      function renderDrawer() {
+        const overlay = document.getElementById("drawer-overlay");
+        const content = document.getElementById("drawer-content");
+        const title = document.getElementById("drawer-title");
+        if (!selectedPatientKey) {
+          overlay.classList.add("hidden");
+          return;
+        }
+        const p = patientsMap[selectedPatientKey] || {};
+        overlay.classList.remove("hidden");
+        title.textContent = `Patient Profile – ${p.name || "(loading...)"}`;
+
+        // Access vitals: hardware may store under keys: salineLevel, heartRate, temperature, alertHighHeartRate, bubbleDetected, etc.
+        const heartRate = p.heartRate ?? p.hr ?? p.heart_rate ?? null;
+        const temperature = p.temperature ?? p.tempC ?? p.temp ?? null;
+        const saline = p.salineLevel ?? p.salinePct ?? p.saline_level ?? null;
+        // show loading text if null/undefined
+        const hrDisplay = heartRate != null ? heartRate : "(loading...)";
+        const tempDisplay = temperature != null ? temperature : "(loading...)";
+        const salineDisplay = saline != null ? saline : "(loading...)";
+
+        content.innerHTML = `
+          <section class="grid grid-cols-2 gap-3 text-sm">
+            <div class="p-4 rounded-2xl border bg-white">
+              <div class="text-xs text-gray-500">Name</div>
+              <div class="font-medium break-words">${
+                p.name || "(loading...)"
+              }</div>
+            </div>
+            <div class="p-4 rounded-2xl border bg-white">
+              <div class="text-xs text-gray-500">Age</div>
+              <div class="font-medium">${
+                p.age != null ? p.age : "(loading...)"
+              }</div>
+            </div>
+            <div class="p-4 rounded-2xl border bg-white">
+              <div class="text-xs text-gray-500">Blood Group</div>
+              <div class="font-medium">${p.bloodGroup || "(loading...)"}</div>
+            </div>
+            <div class="p-4 rounded-2xl border bg-white">
+              <div class="text-xs text-gray-500">Contact</div>
+              <div class="font-medium">${p.contact || "(loading...)"}</div>
+            </div>
+            <div class="p-4 rounded-2xl border bg-white col-span-2">
+              <div class="text-xs text-gray-500">Address</div>
+              <div class="font-medium break-words">${
+                p.address || "(loading...)"
+              }</div>
+            </div>
+          </section>
+
+          <section class="mt-2">
+            <h3 class="font-semibold mb-2">Current Vitals</h3>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div class="p-4 rounded-2xl border bg-white">
+                <div class="text-xs text-gray-500">Heart Rate</div>
+                <div class="font-semibold text-lg">${hrDisplay}</div>
+              </div>
+              <div class="p-4 rounded-2xl border bg-white">
+                <div class="text-xs text-gray-500">Temperature</div>
+                <div class="font-semibold text-lg">${tempDisplay}</div>
+              </div>
+              <div class="p-4 rounded-2xl border bg-white flex items-center justify-between">
+                <div>
+                  <div class="text-xs text-gray-500">Saline</div>
+                  <div class="text-lg font-semibold">${salineDisplay}</div>
+                </div>
+                <div class="flex flex-col items-center">
+                  ${circleGaugeSvg(saline != null ? saline : 0)}
+                  <div class="text-xs mt-1 font-medium">${salineDisplay}</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="mt-3">
+            <h3 class="font-semibold mb-2">Metadata</h3>
+            <div class="text-sm text-gray-700">
+              Key: <span class="font-mono text-xs">${selectedPatientKey}</span><br/>
+              Room/Bed: <span class="font-medium">${
+                p.bed ?? "(loading...)"
+              }</span><br/>
+              Created: <span class="font-medium">${
+                p.createdAt
+                  ? new Date(p.createdAt).toLocaleString()
+                  : "(loading...)"
+              }</span>
+            </div>
+          </section>
+
+          <div class="mt-4 flex gap-2">
+            <button id="discharge-btn" class="px-3 py-2 rounded-xl border bg-red-600 text-white">Discharge Patient</button>
+            <button id="copy-path-btn" class="px-3 py-2 rounded-xl border">Copy Firebase Path</button>
+            <div class="ml-auto text-sm text-gray-500">id: ${selectedPatientKey}</div>
+          </div>
+        `;
+
+        document.getElementById("discharge-btn").onclick = () =>
+          dischargePatient(selectedPatientKey);
+        document.getElementById("copy-path-btn").onclick = () => {
+          navigator.clipboard
+            ?.writeText(selectedPatientKey)
+            .then(() => showToast("Path copied"));
+        };
+      }
+
+      function bedCardTemplate(key, p) {
+        // p is the raw node object
+        // prefer hardware field names if present
+        const name = p.name || "(loading...)";
+        const age = p.age != null ? p.age : "(loading...)";
+        const bedLabel = p.bed != null ? p.bed : "-";
+        const saline =
+          p.salineLevel ??
+          p.salinePct ??
+          p.saline_level ??
+          (p.vitals && p.vitals.salinePct != null ? p.vitals.salinePct : null);
+        const salineNum = isFinite(Number(saline)) ? Number(saline) : 0;
+        const pct = saline != null ? salineNum : 0;
+        const critical = pct <= 5;
+        // determine display for saline bar color
+        const barColor = salineColor(pct);
+        return `
+          <button
+            class="bed-card relative text-left p-4 rounded-2xl border bg-white hover:shadow-md transition focus:outline-none focus:ring-2 focus:ring-blue-400 ${
+              critical ? "animate-pulse ring-2 ring-red-500" : ""
+            }"
+            data-id="${key}"
+            aria-label="Patient ${name}"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <div class="text-xs text-gray-500">Bed #${bedLabel}</div>
+                <div class="font-semibold leading-tight">${name}</div>
+                <div class="text-sm text-gray-700">Age ${age}</div>
+              </div>
+              <div class="flex flex-col items-center">
+                ${circleGaugeSvg(pct)}
+                <div class="text-xs mt-1 font-medium">${
+                  saline != null ? saline : "(loading...)"
+                }</div>
+              </div>
+            </div>
+
+            <div class="mt-3">
+              <div class="flex items-center justify-between text-xs">
+                <span>Saline</span>
+                <span class="font-medium">${
+                  saline != null ? saline : "(loading...)"
+                }</span>
+              </div>
+              <div class="mt-1 h-2 w-full rounded-full bg-gray-200 overflow-hidden" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">
+                <div class="h-full ${barColor}" style="width: ${pct}%;"></div>
+              </div>
+            </div>
+
+            ${
+              critical
+                ? `<div class="absolute -top-2 -right-2 text-[10px] px-2 py-1 rounded-full bg-red-600 text-white shadow">CRITICAL</div>`
+                : ""
+            }
+          </button>
+        `;
+      }
+
+      function renderApp() {
+        document.getElementById("magna-search").value = filterText;
+        document.getElementById("critical-only-checkbox").checked = onlyAlerts;
+        document.getElementById("pause-button").textContent = paused
+          ? "Resume"
+          : "Pause";
+        document.getElementById("interval-select").value = String(intervalMs);
+
+        // KPIs
+        document.getElementById("kpi-total-beds").textContent = patients.length;
+        const alarms = patients.filter((p) => {
+          const saline =
+            p.data.salineLevel ??
+            p.data.salinePct ??
+            (p.data.vitals && p.data.vitals.salinePct);
+          return saline != null && Number(saline) <= 5;
+        }).length;
+        const under20 = patients.filter((p) => {
+          const saline =
+            p.data.salineLevel ??
+            p.data.salinePct ??
+            (p.data.vitals && p.data.vitals.salinePct);
+          return saline != null && Number(saline) <= 20;
+        }).length;
+        document.getElementById("kpi-active-alarms").textContent = alarms;
+        document.getElementById("kpi-under-20").textContent = under20;
+
+        const now = new Date();
+        document.getElementById("kpi-updated").textContent = `${pad2(
+          now.getHours()
+        )}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
+
+        // filter and render cards
+        const q = filterText.trim().toLowerCase();
+        const list = patients
+          .filter((p) => {
+            if (!q) return true;
+            const d = p.data || {};
+            const name = (d.name || "").toString().toLowerCase();
+            const bed = (d.bed != null ? d.bed.toString() : "").toLowerCase();
+            const age = (d.age != null ? d.age.toString() : "").toLowerCase();
+            const blood = (d.bloodGroup || "").toString().toLowerCase();
+            return [name, bed, age, blood].join(" ").includes(q);
+          })
+          .filter((p) => {
+            if (!onlyAlerts) return true;
+            const saline =
+              p.data.salineLevel ??
+              p.data.salinePct ??
+              (p.data.vitals && p.data.vitals.salinePct);
+            return saline != null && Number(saline) <= 5;
+          });
+
+        const bedGrid = document.getElementById("bed-grid");
+        bedGrid.innerHTML = list
+          .map((p) => bedCardTemplate(p.key, p.data))
+          .join("");
+
+        // attach listeners
+        document.querySelectorAll(".bed-card").forEach((btn) => {
+          btn.onclick = () => openDrawer(btn.dataset.id);
+        });
+
+        // render drawer if open
+        renderDrawer();
+      }
+
+      // ---------- Event wiring ----------
+      function setupEvents() {
+        document
+          .getElementById("magna-search")
+          .addEventListener("input", (e) => {
+            filterText = e.target.value;
+            renderApp();
+          });
+        document
+          .getElementById("critical-only-checkbox")
+          .addEventListener("change", (e) => {
+            onlyAlerts = e.target.checked;
+            renderApp();
+          });
+        document
+          .getElementById("add-patient-header-btn")
+          .addEventListener("click", openAddModal);
+        document
+          .getElementById("close-add-modal")
+          .addEventListener("click", closeAddModal);
+        document
+          .getElementById("submit-add")
+          .addEventListener("click", () => addPatientToFirebase(false));
+        document
+          .getElementById("submit-add-and-open")
+          .addEventListener("click", () => addPatientToFirebase(true));
+        document
+          .getElementById("pause-button")
+          .addEventListener("click", () => {
+            paused = !paused;
+            renderApp();
+            paused ? stopInterval() : startInterval();
+          });
+        document
+          .getElementById("interval-select")
+          .addEventListener("change", (e) => {
+            intervalMs = Number(e.target.value);
+            restartInterval();
+          });
+        document
+          .getElementById("drawer-close-btn")
+          .addEventListener("click", closeDrawer);
+        document
+          .getElementById("drawer-backdrop")
+          .addEventListener("click", closeDrawer);
+
+        window.addEventListener("keydown", (e) => {
+          if (e.key === "/") {
+            e.preventDefault();
+            document.getElementById("magna-search").focus();
+          }
+          if (e.key === "p") {
+            paused = !paused;
+            renderApp();
+            paused ? stopInterval() : startInterval();
+          }
+          if (e.key === "Escape") {
+            closeDrawer();
+            closeAddModal();
+          }
+        });
+      }
+
+      // ---------- Interval for UI refresh (timestamp etc) ----------
+      function startInterval() {
+        stopInterval();
+        if (!paused) intervalId = setInterval(renderApp, intervalMs);
+      }
+      function stopInterval() {
+        if (intervalId) {
+          clearInterval(intervalId);
+          intervalId = null;
+        }
+      }
+      function restartInterval() {
+        stopInterval();
+        startInterval();
+      }
+
+      // ---------- Init ----------
+      setupEvents();
+      startPatientListener();
+      startInterval();
+      renderApp();
+
+      // Expose some helpers for debugging
+      window.computeNextPatientKey = computeNextPatientKey;
+      window.addPatientToFirebase = addPatientToFirebase;
+      window.dischargePatient = dischargePatient;
+      window.startPatientListener = startPatientListener;
+    </script>
+  </body>
+</html>
