@@ -4,8 +4,7 @@
 
 This database is part of my M.A.G.N.A. project (Medical Automated Guardian & Notification Assistant), where I built a system to monitor patient vitals and saline levels using sensors and an ESP32.
 
-The goal of this database is simple:
-👉 Store all patient-related data in a structured way so it can be monitored, analyzed, and later used for intelligent decision-making.
+The goal of this database is simple: Store all patient-related data in a structured way so it can be monitored, analyzed, and later used for intelligent decision-making.
 
 ---
 
